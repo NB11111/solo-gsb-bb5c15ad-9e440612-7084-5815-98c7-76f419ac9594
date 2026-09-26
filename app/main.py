@@ -24,6 +24,13 @@ from .simplify import (
     simplify_track,
 )
 from .stay import MAX_GAP_S, MIN_STAY_S, STAY_RADIUS_M, detect_stays
+from .steep import (
+    GRADE_THRESHOLD,
+    MIN_SECTION_M,
+    WINDOW_M,
+    WINDOW_STEP_M,
+    find_steep_sections,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -53,6 +60,10 @@ class PaceRequest(BaseModel):
 
 
 class ElevationRequest(BaseModel):
+    track_id: str
+
+
+class SteepRequest(BaseModel):
     track_id: str
 
 
@@ -230,6 +241,37 @@ def elevation(req: ElevationRequest):
             }
             for r in result.runs
         ],
+    }
+
+
+@app.post("/api/steep-sections")
+def steep_sections(req: SteepRequest):
+    """持续陡坡分析：复用海拔剖面的平滑重采样序列，100 米窗口、20 米前移，
+    上坡 ≥ 8% 或下坡 ≤ −8% 标记窗口中心 20 米区间，相邻同向合并后
+    总长 ≥ 100 米才列出；不跨原始 trkseg 边界或缺失海拔缺口。"""
+    track = _get_track(req.track_id)
+    result = find_steep_sections(track["segments"])
+    return {
+        "has_ele": result.has_ele,
+        "distance_m": result.distance_m,
+        "sections": [
+            {
+                "seg_index": s.seg_index,
+                "start_m": s.start_m,
+                "end_m": s.end_m,
+                "length_m": s.end_m - s.start_m,
+                "direction": s.direction,
+                "max_grade_pct": s.max_grade_pct,
+                "window_count": s.window_count,
+            }
+            for s in result.sections
+        ],
+        "thresholds": {
+            "window_m": WINDOW_M,
+            "window_step_m": WINDOW_STEP_M,
+            "grade_threshold_pct": GRADE_THRESHOLD * 100.0,
+            "min_section_m": MIN_SECTION_M,
+        },
     }
 
 

@@ -1,6 +1,7 @@
 # 徒步轨迹分享 · 敏感地点遮蔽
 
-上传含时间的 GPX 轨迹，自动统计**分段配速**、**海拔剖面 / 累计爬升**、**停留识别**
+上传含时间的 GPX 轨迹，自动统计**分段配速**、**海拔剖面 / 累计爬升**、**持续陡坡**
+（100 米窗口坡度 ≥ 8% 的连续区间）、**停留识别**
 （停留 / 移动时长）并检测**单点漂移跳点**（可下载修复后的 GPX）；支持按 1～100 米
 误差阈值做 **Douglas-Peucker 轨迹精简**（预览叠加精简线、显示前后点数、可下载精简后的
 GPX）；可再上传第二条轨迹做**双人轨迹相遇分析**（时间重叠范围内距离 ≤ 50 米且持续
@@ -34,6 +35,7 @@ docker compose up --build
 | 每段里程 | 页面"分段配速"输入框，或 `/api/pace` 的 `split_km` | 0.1～10 公里，默认 1 公里 |
 | 精简误差阈值 | 页面"轨迹精简"输入框，或 `/api/simplify` 的 `tolerance_m` | 1～100 米，默认 10 米 |
 | 停留判定口径 | `app/stay.py` 中 `STAY_RADIUS_M` / `MIN_STAY_S` / `MAX_GAP_S` | 30 米 / 3 分钟 / 10 分钟（记录中断阈值） |
+| 陡坡判定口径 | `app/steep.py` 中 `WINDOW_M` / `WINDOW_STEP_M` / `GRADE_THRESHOLD` / `MIN_SECTION_M` | 100 米窗口 / 20 米前移 / 8% 坡度 / 最小 100 米 |
 | 相遇判定口径 | `app/encounter.py` 中 `MEET_RADIUS_M` / `MIN_MEET_S` / `MAX_GAP_S` | 50 米 / 60 秒 / 10 分钟（断档阈值） |
 | 数据存储 | 内存 | 演示用途：轨迹仅存内存，容器重启即清空，无需数据库 |
 
@@ -47,24 +49,27 @@ docker compose up --build
    可修改后自动重算）列出每段的距离、耗时、分/公里配速与起止时间。
 3. **查看海拔剖面**：页面底部自动绘制**按里程展开的海拔曲线**，并给出**总爬升 / 总下降**
    与海拔范围；轨迹无海拔信息时显示"无海拔数据"。
-4. **查看单点漂移修复**：页面自动检测**跳点**（GPS 单点漂移），命中点以橙色"漂"标记在
+4. **查看持续陡坡**：页面自动复用上述平滑海拔剖面，列出**持续陡坡区间的起止里程、
+   方向与最大绝对坡度**（上坡 ≥ 8%、下坡 ≤ −8%，合并后总长 ≥ 100 米），并在海拔图上
+   以橙色（上坡）/ 青绿色（下坡）色带标出；无海拔或没有符合区间时显示明确空态。
+5. **查看单点漂移修复**：页面自动检测**跳点**（GPS 单点漂移），命中点以橙色"漂"标记在
    预览图上，并列出命中明细与**修复前 / 修复后里程**；点击"下载修复后的 GPX"得到删除
    跳点后的轨迹。遮蔽裁切、配速与海拔统计始终使用**原始轨迹**，不受修复影响。
-5. **查看停留识别**：页面自动识别**停留**（同一地点逗留 ≥ 3 分钟），停留位置以紫色"停"
+6. **查看停留识别**：页面自动识别**停留**（同一地点逗留 ≥ 3 分钟），停留位置以紫色"停"
    标记在预览图上，并列出每次停留的位置、起止时间与时长，以及**全程记录 / 停留 / 移动时长**。
-6. **轨迹精简**：页面按**误差阈值**（1～100 米，默认 10 米，修改后自动重算）对原始轨迹做
+7. **轨迹精简**：页面按**误差阈值**（1～100 米，默认 10 米，修改后自动重算）对原始轨迹做
    Douglas-Peucker 精简，精简线以青绿色叠加在预览图上，并显示**精简前 / 后点数**与距离；
    点击"下载精简后的 GPX"得到与预览一致的精简轨迹。遮蔽裁切、配速、海拔、漂移与停留统计
    始终使用**原始轨迹**，不受精简影响。
-7. **双人轨迹相遇**（可选）：在"双人轨迹相遇"区块**再上传一条含时间的 GPX** 作为对比轨迹
+8. **双人轨迹相遇**（可选）：在"双人轨迹相遇"区块**再上传一条含时间的 GPX** 作为对比轨迹
    （复用同一上传接口），页面自动分析并列出**每次相遇的起止时间、持续时长与最近距离**，
    相遇位置以粉红色"遇"标记在预览图上；无相遇时显示空结果。对比轨迹仅用于相遇分析，
-   不影响当前轨迹的遮蔽、配速、海拔、漂移、停留与精简结果。
-8. **设置遮蔽**：在右侧预览图上**点击**敏感地点即添加遮蔽圆，半径在左侧面板设定
+   不影响当前轨迹的遮蔽、配速、海拔、陡坡、漂移、停留与精简结果。
+9. **设置遮蔽**：在右侧预览图上**点击**敏感地点即添加遮蔽圆，半径在左侧面板设定
    （添加前设定新圆半径；已有圆可在列表中单独修改或删除）。
-9. **查看裁切结果**：页面实时显示 **隐藏段数**、**裁切前距离**、**裁切后距离** 与可见分段数；
-   蓝色为可见轨迹，红色虚线为被隐藏段。
-10. **下载**：点击"下载遮蔽后的 GPX"，得到一条 `trk` 下多个互不连接的 `trkseg`。
+10. **查看裁切结果**：页面实时显示 **隐藏段数**、**裁切前距离**、**裁切后距离** 与可见分段数；
+    蓝色为可见轨迹，红色虚线为被隐藏段。
+11. **下载**：点击"下载遮蔽后的 GPX"，得到一条 `trk` 下多个互不连接的 `trkseg`。
 
 ## 分段配速规则（实现要点）
 
@@ -90,6 +95,28 @@ docker compose up --build
   累计已确认的上升与下降；区间末尾未确认的变化也计入；各区间独立累计后求和。
 - **无海拔数据**：全程无任何有效海拔时接口返回 `has_ele=false`、爬升/下降为 `null`，
   页面显示"无海拔数据"而不是 0 米爬升。
+
+## 持续陡坡规则（实现要点）
+
+- **复用平滑海拔剖面**：直接消费海拔分析的结果——同样的**连续有效海拔区间**切分
+  （原始 `trkseg` 内 `ele` 非空的极大连续子序列）、同样的 **20 米重采样**与
+  **三点中位数滤波**序列；与遮蔽裁切、配速、漂移修复、停留、精简互不影响。
+- **完整 100 米窗口**：在每个连续有效海拔区间内，窗口跨度为 **100 米**（5 个 20 米
+  采样间隔），从区间起点每 **20 米**前移一次；只使用首尾都落在重采样网格上的完整窗口，
+  区间首尾各 50 米、以及末端不足 100 米的部分不会被标记（不补点、不外推）。
+- **坡度口径**：坡度 = 窗口首末**平滑海拔之差** ÷ 100 米 × 100%；
+  **上坡 ≥ 8%** 或**下坡 ≤ −8%**（边界值命中）时，标记**窗口中心对应的 20 米里程区间**
+  （窗口中心 ±10 米，标记边界恰在 20 米网格上）。
+- **同向相邻合并**：沿里程顺序把**相邻且方向相同**的标记合并为一个陡坡区间；
+  方向相反（上坡/下坡相邻）或中间被未标记窗口隔开（如平缓段）都不合并；
+  合并后**总长至少 100 米**（恰好 100 米列出，即至少 5 个连续同向标记）才给出
+  **起止里程、方向（上坡/下坡）与最大绝对坡度**（区间内最陡窗口的有符号坡度，%）。
+- **边界不合并**：每个连续有效海拔区间独立分析，**原始 `trkseg` 边界**与
+  **缺失海拔处**天然断开，绝不跨分段或缺口合并；输出里程为**全程水平里程**坐标
+  （与海拔图 x 轴一致），并附原始 `seg_index`。
+- **空态**：全程无任何有效海拔时返回 `has_ele=false`、`sections` 为空，页面显示
+  "无海拔数据，无法分析持续陡坡"；有海拔但无符合区间时 `sections` 为空数组，页面显示
+  "未发现持续陡坡"的明确空态。
 
 ## 单点漂移修复规则（实现要点）
 
@@ -182,17 +209,18 @@ docker compose up --build
 
 ```
 app/
-  main.py          # FastAPI 路由：/api/upload、/api/mask、/api/export、/api/pace、/api/elevation、/api/drift、/api/drift/export、/api/stays、/api/simplify、/api/simplify/export、/api/encounters、静态页面
+  main.py          # FastAPI 路由：/api/upload、/api/mask、/api/export、/api/pace、/api/elevation、/api/steep-sections、/api/drift、/api/drift/export、/api/stays、/api/simplify、/api/simplify/export、/api/encounters、静态页面
   geo.py           # 几何核心：haversine、点到线段距离、线段-圆求交、按可见性裁切
   pace.py          # 分段配速：按固定里程切段、边界时间插值
   elevation.py     # 海拔剖面：20 米重采样、三点中位数、5 米反向确认峰谷、累计爬升/下降
+  steep.py         # 持续陡坡：复用平滑剖面，100 米窗口/20 米前移，±8% 标记、同向相邻合并、≥100 米过滤
   drift.py         # 单点漂移：跳点判定（速度 + 偏移阈值）、逐轮删除最早命中点
   stay.py          # 停留识别：锚点扩展（30 米 / 3 分钟）、记录中断（10 分钟）、记录/停留/移动时长
   simplify.py      # 轨迹精简：局部米制投影、迭代式 Douglas-Peucker（点到有限线段距离）
   encounter.py     # 双人轨迹相遇：带时间线段、断档剔除、局部米制平面求距、区间合并与时长过滤
   gpxutil.py       # GPX 1.1 解析（强制要求 time）与多 trkseg 导出
   static/          # 原生 JS 前端（index.html / app.js / style.css）
-tests/             # 单元测试：test_geo.py（裁切 9 项）、test_pace.py（配速 8 项）、test_elevation.py（海拔 13 项）、test_drift.py（漂移 12 项）、test_stay.py（停留 14 项）、test_simplify.py（精简 17 项）、test_encounter.py（相遇 16 项）
+tests/             # 单元测试：test_geo.py（裁切 9 项）、test_pace.py（配速 8 项）、test_elevation.py（海拔 13 项）、test_steep.py（陡坡 15 项）、test_drift.py（漂移 12 项）、test_stay.py（停留 14 项）、test_simplify.py（精简 17 项）、test_encounter.py（相遇 16 项）
 examples/sample.gpx# 示例轨迹（两个 trkseg，含时间与海拔）
 Dockerfile         # python:3.12-slim，构建期安装依赖，启动即运行
 docker-compose.yml # 单服务，映射 8000 端口
@@ -209,6 +237,7 @@ uvicorn app.main:app --reload --port 8000
 python3 tests/test_geo.py        # 裁切逻辑
 python3 tests/test_pace.py       # 分段配速
 python3 tests/test_elevation.py  # 海拔剖面与累计爬升
+python3 tests/test_steep.py      # 持续陡坡分析
 python3 tests/test_drift.py      # 单点漂移检测与修复
 python3 tests/test_stay.py       # 停留识别与记录/移动时长
 python3 tests/test_simplify.py   # 轨迹精简（Douglas-Peucker）
@@ -225,6 +254,7 @@ python3 tests/test_encounter.py  # 双人轨迹相遇
 | `POST` | `/api/export` | 同上参数，返回多 `trkseg` 的 GPX 文件下载 |
 | `POST` | `/api/pace` | `{track_id, split_km?}` → 分段配速（见下） |
 | `POST` | `/api/elevation` | `{track_id}` → 海拔剖面与总爬升/总下降（见下） |
+| `POST` | `/api/steep-sections` | `{track_id}` → 持续陡坡区间列表（见下） |
 | `POST` | `/api/drift` | `{track_id}` → 单点漂移检测结果与修复前后里程（见下） |
 | `POST` | `/api/drift/export` | `{track_id}` → 删除跳点后的 GPX 文件下载 |
 | `POST` | `/api/stays` | `{track_id}` → 停留识别结果与记录/停留/移动时长（见下） |
@@ -263,6 +293,29 @@ curl -X POST http://localhost:8000/api/pace \
 
 ```bash
 curl -X POST http://localhost:8000/api/elevation \
+  -H "Content-Type: application/json" \
+  -d '{"track_id": "<上传返回的 track_id>"}'
+```
+
+### `POST /api/steep-sections` 持续陡坡分析
+
+- **参数**：`track_id`（必填，上传返回值）。无额外参数，口径固定为
+  100 米窗口、20 米前移、坡度阈值 ±8%、合并后最小总长 100 米。
+- **返回**：`has_ele`（是否存在有效海拔）、`distance_m`（全程水平里程）、`sections`
+  （陡坡区间列表，按里程先后；每段含 `seg_index`（原始 `trkseg` 序号）、
+  `start_m` / `end_m`（全程里程坐标的起止）、`length_m`（长度，米）、
+  `direction`（`"up"` 上坡 / `"down"` 下坡）、`max_grade_pct`（区间内有符号的
+  最大绝对坡度，%，下坡为负）、`window_count`（合并的 20 米标记数））与
+  `thresholds`（口径：`window_m=100`、`window_step_m=20`、`grade_threshold_pct=8`、
+  `min_section_m=100`）。
+- **空态**：无任何有效海拔时 `has_ele=false` 且 `sections` 为空；
+  有海拔但无符合区间时 `has_ele=true`、`sections` 为空数组；
+  `track_id` 不存在返回 `404`。
+
+示例：
+
+```bash
+curl -X POST http://localhost:8000/api/steep-sections \
   -H "Content-Type: application/json" \
   -d '{"track_id": "<上传返回的 track_id>"}'
 ```

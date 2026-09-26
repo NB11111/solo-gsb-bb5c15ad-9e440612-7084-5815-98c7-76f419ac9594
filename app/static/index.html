@@ -61,8 +61,21 @@
     <p class="hint">按里程每 20 米重采样，三点中位数抑制尖峰，5 米反向变化确认峰谷；缺失海拔处断开，不跨分段或缺口插值</p>
   </section>
 
+  <section class="steep">
+    <h2>6. 持续陡坡分析</h2>
+    <div id="steep" class="info muted">上传含海拔的 GPX 后自动分析</div>
+    <p class="hint">复用海拔剖面的平滑序列：每个连续有效海拔区间内以完整 100 米窗口首末高差计坡度，
+      窗口每 20 米前移一次；上坡 ≥ 8% 或下坡 ≤ −8% 时标记窗口中心的 20 米里程区间，
+      相邻同向标记合并，总长 ≥ 100 米才列出。不跨原始 trkseg 边界或缺失海拔处合并。
+      区间已用色带标在上方海拔图上：</p>
+    <div class="legend steep-legend">
+      <span><i class="sw steep-up"></i>上坡区间（≥ 8%）</span>
+      <span><i class="sw steep-down"></i>下坡区间（≤ −8%）</span>
+    </div>
+  </section>
+
   <section class="drift">
-    <h2>6. 单点漂移修复</h2>
+    <h2>7. 单点漂移修复</h2>
     <div id="drift" class="info muted">上传 GPX 后自动检测跳点</div>
     <button id="download-fixed" disabled>下载修复后的 GPX</button>
     <p class="hint">判定：同一 trkseg 内某中间点进出两段速度均 &gt; 12 m/s、绕过该点的首尾速度 ≤ 12 m/s、
@@ -71,7 +84,7 @@
   </section>
 
   <section class="stay">
-    <h2>7. 停留识别</h2>
+    <h2>8. 停留识别</h2>
     <div id="stay" class="info muted">上传 GPX 后自动识别停留</div>
     <p class="hint">判定：按原始 trkseg 的时间顺序，以候选首点为锚向后扩展，连续点均在 30 米内
       且首末至少相隔 3 分钟记为一次停留，越界即结算、区间互不重叠；相邻采样间隔 &gt; 10 分钟
@@ -79,7 +92,7 @@
   </section>
 
   <section class="simplify">
-    <h2>8. 轨迹精简</h2>
+    <h2>9. 轨迹精简</h2>
     <label class="row">误差阈值（米）
       <input type="number" id="tolerance-m" value="10" min="1" max="100" step="1">
       <span class="hint">范围 1～100，默认 10；修改后自动重算</span>
@@ -94,7 +107,7 @@
   </section>
 
   <section class="encounter">
-    <h2>9. 双人轨迹相遇</h2>
+    <h2>10. 双人轨迹相遇</h2>
     <input type="file" id="file2" accept=".gpx,application/gpx+xml">
     <div id="track2-info" class="info muted">可选：再上传一条含时间的 GPX 作为对比轨迹</div>
     <div id="encounter" class="info muted">上传对比轨迹后自动分析相遇</div>

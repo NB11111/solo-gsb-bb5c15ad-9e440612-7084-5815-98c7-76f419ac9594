@@ -10,6 +10,7 @@ const state = {
   circles: [],    // [{lat, lon, radius_m}]
   masked: null,   // /api/mask 返回结果
   elevation: null, // /api/elevation 返回结果
+  steep: null,    // /api/steep-sections 返回结果
   drift: null,    // /api/drift 返回结果
   stays: null,    // /api/stays 返回结果
   simplify: null, // /api/simplify 返回结果
@@ -213,6 +214,7 @@ async function uploadFile(file) {
   state.circles = [];
   state.masked = null;
   state.elevation = null;
+  state.steep = null;
   state.drift = null;
   state.stays = null;
   state.simplify = null;
@@ -225,6 +227,7 @@ async function uploadFile(file) {
   await refreshMask();
   await refreshPace();
   await refreshElevation();
+  await refreshSteep();
   await refreshDrift();
   await refreshStays();
   await refreshSimplify();
@@ -279,6 +282,27 @@ async function refreshElevation() {
     state.elevation = null;
     el.classList.remove("muted");
     el.innerHTML = `<div class="pace-error">无法计算海拔剖面：${escapeHtml(err.message)}</div>`;
+  }
+  drawProfile();
+}
+
+async function refreshSteep() {
+  if (!state.trackId) return;
+  const el = document.getElementById("steep");
+  try {
+    const res = await fetch("/api/steep-sections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ track_id: state.trackId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(errDetail(data, "陡坡分析失败"));
+    state.steep = data;
+    renderSteep(data);
+  } catch (err) {
+    state.steep = null;
+    el.classList.remove("muted");
+    el.innerHTML = `<div class="pace-error">无法分析持续陡坡：${escapeHtml(err.message)}</div>`;
   }
   drawProfile();
 }
@@ -553,6 +577,38 @@ function renderElevation(data) {
     `<b>${data.ele_max.toFixed(0)}</b> m，里程 ${fmtKm(data.distance_m)} km</div>`;
 }
 
+function renderSteep(data) {
+  const el = document.getElementById("steep");
+  el.classList.remove("muted");
+  if (!data.has_ele) {
+    el.innerHTML = "<div>无海拔数据，无法分析持续陡坡</div>";
+    return;
+  }
+  if (!data.sections.length) {
+    el.innerHTML =
+      "<div>未发现持续陡坡：没有总长 ≥ 100 米、坡度 ≥ 8%（上坡）" +
+      "或 ≤ −8%（下坡）的连续区间</div>";
+    return;
+  }
+  const rows = data.sections.map((s, i) =>
+    "<tr>" +
+    `<td>${i + 1}</td>` +
+    `<td>${s.seg_index}</td>` +
+    `<td>${fmtKm(s.start_m)} ~ ${fmtKm(s.end_m)} km</td>` +
+    `<td>${Math.round(s.length_m)}</td>` +
+    `<td>${s.direction === "up" ? "上坡" : "下坡"}</td>` +
+    `<td>${Math.abs(s.max_grade_pct).toFixed(1)}%</td>` +
+    "</tr>"
+  ).join("");
+  el.innerHTML =
+    `<div>持续陡坡区间：<b>${data.sections.length}</b> 段` +
+    `（完整 100 米窗口、20 米前移，坡度 ≥ 8% 或 ≤ −8%，合并后总长 ≥ 100 米）</div>` +
+    '<table class="pace-table steep-table"><thead><tr>' +
+    "<th>序</th><th>原始分段</th><th>起止里程</th><th>长度(m)</th>" +
+    "<th>方向</th><th>最大绝对坡度</th>" +
+    `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 /* 海拔剖面图：x 轴为全程里程，y 轴为海拔；每个连续有效区间一条折线，区间间断开 */
 function drawProfile() {
   const dpr = window.devicePixelRatio || 1;
@@ -619,6 +675,31 @@ function drawProfile() {
     profileCtx.textAlign = "right";
     profileCtx.fillText(e.toFixed(0) + (i === yTicks ? " m" : ""),
       padL - 5 * dpr, y + 3 * dpr);
+  }
+
+  // 持续陡坡区间色带：上坡橙、下坡青绿，画在海拔折线之下；不跨区间（缺口/分段处天然断开）
+  if (state.steep && state.steep.has_ele) {
+    for (const sec of state.steep.sections) {
+      const x0 = px(sec.start_m), x1 = px(sec.end_m);
+      const up = sec.direction === "up";
+      profileCtx.fillStyle = up ? "rgba(245, 124, 32, 0.16)" : "rgba(0, 137, 123, 0.16)";
+      profileCtx.fillRect(x0, padT, x1 - x0, plotH);
+      profileCtx.strokeStyle = up ? "#f57c20" : "#00897b";
+      profileCtx.lineWidth = 1.5 * dpr;
+      profileCtx.beginPath();
+      profileCtx.moveTo(x0, padT);
+      profileCtx.lineTo(x1, padT);
+      profileCtx.stroke();
+      if (x1 - x0 >= 34 * dpr) {
+        profileCtx.fillStyle = up ? "#e65100" : "#00695c";
+        profileCtx.font = `${10 * dpr}px sans-serif`;
+        profileCtx.textAlign = "center";
+        profileCtx.fillText(
+          `${up ? "上坡" : "下坡"} ${Math.abs(sec.max_grade_pct).toFixed(1)}%`,
+          (x0 + x1) / 2, padT + plotH - 6 * dpr
+        );
+      }
+    }
   }
 
   // 海拔折线：每个连续有效区间一条，区间之间断开

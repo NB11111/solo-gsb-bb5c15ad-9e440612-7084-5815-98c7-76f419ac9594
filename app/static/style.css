@@ -130,6 +130,17 @@ button.secondary:hover { background: #fff5f5; }
 }
 .elevation .hint { margin: 8px 0 0; }
 
+.steep { padding: 0 24px 24px; }
+.steep h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f0;
+}
+.steep .info b { color: #e65100; }
+.steep-table { margin-top: 8px; }
+.steep-legend { padding-left: 4px; }
+
 .drift { padding: 0 24px 24px; }
 .drift h2 {
   font-size: 14px;
@@ -263,6 +274,18 @@ button.secondary:hover { background: #fff5f5; }
   background: #8e24aa;
 }
 .sw.simplify { background: #00897b; }
+.sw.steep-up {
+  height: 10px;
+  border: none;
+  background: rgba(245, 124, 32, 0.45);
+  border-top: 2px solid #f57c20;
+}
+.sw.steep-down {
+  height: 10px;
+  border: none;
+  background: rgba(0, 137, 123, 0.35);
+  border-top: 2px solid #00897b;
+}
 .sw.encounter {
   height: 10px;
   width: 10px;

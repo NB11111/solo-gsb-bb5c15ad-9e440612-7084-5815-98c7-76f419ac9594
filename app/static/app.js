@@ -10,6 +10,7 @@ const state = {
   circles: [],    // [{lat, lon, radius_m}]
   masked: null,   // /api/mask 返回结果
   elevation: null, // /api/elevation 返回结果
+  steep: null,    // /api/steep-sections 返回结果
   drift: null,    // /api/drift 返回结果
   stays: null,    // /api/stays 返回结果
   simplify: null, // /api/simplify 返回结果
@@ -213,6 +214,7 @@ async function uploadFile(file) {
   state.circles = [];
   state.masked = null;
   state.elevation = null;
+  state.steep = null;
   state.drift = null;
   state.stays = null;
   state.simplify = null;
@@ -225,6 +227,7 @@ async function uploadFile(file) {
   await refreshMask();
   await refreshPace();
   await refreshElevation();
+  await refreshSteep();
   await refreshDrift();
   await refreshStays();
   await refreshSimplify();
@@ -283,7 +286,26 @@ async function refreshElevation() {
   drawProfile();
 }
 
-async function downloadGpx() {
+async function refreshSteep() {
+  if (!state.trackId) return;
+  const el = document.getElementById("steep");
+  try {
+    const res = await fetch("/api/steep-sections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ track_id: state.trackId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(errDetail(data, "持续陡坡分析失败"));
+    state.steep = data;
+    renderSteep(data);
+  } catch (err) {
+    state.steep = null;
+    el.classList.remove("muted");
+    el.innerHTML = `<div class="pace-error">无法分析持续陡坡：${escapeHtml(err.message)}</div>`;
+  }
+  drawProfile();  // 陡坡区间以底色叠加在海拔剖面图上
+}
   if (!state.trackId) return;
   try {
     const res = await fetch("/api/export", {
@@ -553,6 +575,38 @@ function renderElevation(data) {
     `<b>${data.ele_max.toFixed(0)}</b> m，里程 ${fmtKm(data.distance_m)} km</div>`;
 }
 
+function renderSteep(data) {
+  const el = document.getElementById("steep");
+  el.classList.remove("muted");
+  if (!data.has_ele) {
+    el.innerHTML = "<div>无海拔数据，无法分析持续陡坡</div>";
+    return;
+  }
+  if (!data.sections.length) {
+    el.innerHTML =
+      "<div>无持续陡坡：100 米窗口坡度未持续达到 8%" +
+      "（相邻同向标记合并后总长需 ≥ 100 米）</div>";
+    return;
+  }
+  const rows = data.sections.map((s, i) =>
+    "<tr>" +
+    `<td>${i + 1}</td>` +
+    `<td class="${s.direction}">${s.direction === "up" ? "上坡" : "下坡"}</td>` +
+    `<td>${fmtKm(s.start_m)}</td>` +
+    `<td>${fmtKm(s.end_m)}</td>` +
+    `<td>${s.length_m.toFixed(0)}</td>` +
+    `<td>${s.max_abs_grade_pct.toFixed(1)}%</td>` +
+    "</tr>"
+  ).join("");
+  el.innerHTML =
+    `<div>持续陡坡：<b>${data.sections.length}</b> 段` +
+    `（100 米窗口坡度 ≥ 8%，合并后标记总长 ≥ 100 米）</div>` +
+    '<table class="pace-table steep-table"><thead><tr>' +
+    "<th>序</th><th>方向</th><th>起点(km)</th><th>终点(km)</th>" +
+    "<th>长度(m)</th><th>最大坡度</th>" +
+    `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 /* 海拔剖面图：x 轴为全程里程，y 轴为海拔；每个连续有效区间一条折线，区间间断开 */
 function drawProfile() {
   const dpr = window.devicePixelRatio || 1;
@@ -619,6 +673,18 @@ function drawProfile() {
     profileCtx.textAlign = "right";
     profileCtx.fillText(e.toFixed(0) + (i === yTicks ? " m" : ""),
       padL - 5 * dpr, y + 3 * dpr);
+  }
+
+  // 持续陡坡区间底色：红=上坡，蓝=下坡（x 轴与剖面同为全程里程）
+  if (state.steep && state.steep.sections) {
+    for (const s of state.steep.sections) {
+      const x0 = px(s.start_m);
+      const x1 = px(s.end_m);
+      profileCtx.fillStyle = s.direction === "up"
+        ? "rgba(229, 57, 53, 0.15)"
+        : "rgba(30, 136, 229, 0.15)";
+      profileCtx.fillRect(x0, padT, Math.max(x1 - x0, 1.5 * dpr), plotH);
+    }
   }
 
   // 海拔折线：每个连续有效区间一条，区间之间断开

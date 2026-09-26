@@ -1,4 +1,4 @@
-"""FastAPI 入口：上传 GPX、遮蔽计算、导出、分段配速、海拔分析、漂移修复、停留识别、轨迹精简、双人轨迹相遇、静态页面。"""
+"""FastAPI 入口：上传 GPX、遮蔽计算、导出、分段配速、海拔分析、持续陡坡、漂移修复、停留识别、轨迹精简、双人轨迹相遇、静态页面。"""
 from __future__ import annotations
 
 import uuid
@@ -24,6 +24,14 @@ from .simplify import (
     simplify_track,
 )
 from .stay import MAX_GAP_S, MIN_STAY_S, STAY_RADIUS_M, detect_stays
+from .steep import (
+    GRADE_THRESHOLD,
+    MARK_M,
+    MIN_SECTION_M,
+    WINDOW_M,
+    WINDOW_STEP_M,
+    steep_sections,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -53,6 +61,10 @@ class PaceRequest(BaseModel):
 
 
 class ElevationRequest(BaseModel):
+    track_id: str
+
+
+class SteepRequest(BaseModel):
     track_id: str
 
 
@@ -230,6 +242,37 @@ def elevation(req: ElevationRequest):
             }
             for r in result.runs
         ],
+    }
+
+
+@app.post("/api/steep-sections")
+def steep(req: SteepRequest):
+    """持续陡坡分析：复用原始轨迹的平滑海拔剖面，以完整 100 米窗口（每次前移 20 米）
+    的首末高差计算坡度；坡度 ≥ 8%（上坡）或 ≤ -8%（下坡）的窗口标记其中心对应的
+    20 米里程区间，相邻同向标记合并后不跨 trkseg 边界或海拔缺口，总长 ≥ 100 米才列出。"""
+    track = _get_track(req.track_id)
+    result = steep_sections(track["segments"])
+    return {
+        "has_ele": result.has_ele,
+        "distance_m": result.distance_m,
+        "sections": [
+            {
+                "seg_index": s.seg_index,
+                "direction": s.direction,
+                "start_m": s.start_m,
+                "end_m": s.end_m,
+                "length_m": s.end_m - s.start_m,
+                "max_abs_grade_pct": s.max_abs_grade * 100.0,
+            }
+            for s in result.sections
+        ],
+        "thresholds": {
+            "window_m": WINDOW_M,
+            "window_step_m": WINDOW_STEP_M,
+            "mark_m": MARK_M,
+            "grade_threshold_pct": GRADE_THRESHOLD * 100.0,
+            "min_section_m": MIN_SECTION_M,
+        },
     }
 
 
